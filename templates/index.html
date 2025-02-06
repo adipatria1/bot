@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Instagram Bot Manager{% endblock %}
+
+{% block body_class %}bg-gray-100 min-h-screen{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold">Instagram Bot Manager</h1>
+            <p class="text-gray-600">Logged in as: {{ username }}</p>
+        </div>
+        <a href="{{ url_for('routes.logout') }}" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">
+            Logout
+        </a>
+    </div>
+
+    <!-- Add New Post -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">Add New Post</h2>
+        <form action="{{ url_for('routes.add_post') }}" method="POST">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <div class="mb-4">
+                        <label for="url" class="block text-sm font-medium text-gray-700 mb-1">Post URL</label>
+                        <input type="url" id="url" name="url" required placeholder="Instagram Post URL" 
+                               class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="keyword" class="block text-sm font-medium text-gray-700 mb-1">Keyword</label>
+                        <input type="text" id="keyword" name="keyword" value="gelud"
+                               class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div class="mb-4 space-y-4">
+                        <div class="flex items-center">
+                            <input type="checkbox" id="send_dm_if_following" name="send_dm_if_following" class="h-4 w-4 text-blue-600">
+                            <label for="send_dm_if_following" class="ml-2 block text-sm text-gray-700">
+                                Send DM only if user follows
+                                <span class="block text-xs text-gray-500">If unchecked, sends DM only if user doesn't follow</span>
+                            </label>
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <input type="checkbox" id="send_dm_if_keyword" name="send_dm_if_keyword" class="h-4 w-4 text-blue-600">
+                            <label for="send_dm_if_keyword" class="ml-2 block text-sm text-gray-700">
+                                Send DM only if keyword found
+                                <span class="block text-xs text-gray-500">If unchecked, sends DM regardless of keyword</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="mb-4">
+                        <label for="reply_comment_text" class="block text-sm font-medium text-gray-700 mb-1">Reply Comment Text</label>
+                        <textarea id="reply_comment_text" name="reply_comment_text" rows="3"
+                                  class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">Thank you for commenting '{keyword}', @{username}!</textarea>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="reply_dm_text" class="block text-sm font-medium text-gray-700 mb-1">Reply DM Text</label>
+                        <textarea id="reply_dm_text" name="reply_dm_text" rows="3"
+                                  class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">Hi {display_name}! Thanks for commenting '{keyword}'. Can I help you with anything?</textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <button type="submit" 
+                        class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 transition duration-200">
+                    Add Post
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Managed Posts -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-semibold mb-4">Managed Posts</h2>
+        {% if posts %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-6 py-3 text-left">Post URL</th>
+                            <th class="px-6 py-3 text-left">Keyword</th>
+                            <th class="px-6 py-3 text-left">Added At</th>
+                            <th class="px-6 py-3 text-left">Last Check</th>
+                            <th class="px-6 py-3 text-left">Status</th>
+                            <th class="px-6 py-3 text-left">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for post_id, post in posts.items() %}
+                        <tr class="border-t">
+                            <td class="px-6 py-4">
+                                <a href="{{ post.url }}" target="_blank" class="text-blue-500 hover:underline">
+                                    {{ post.url }}
+                                </a>
+                            </td>
+                            <td class="px-6 py-4">{{ post.keyword }}</td>
+                            <td class="px-6 py-4">{{ post.added_at }}</td>
+                            <td class="px-6 py-4">{{ post.last_check or 'Never' }}</td>
+                            <td class="px-6 py-4">
+                                <span class="{{ 'text-green-500' if post.active else 'text-red-500' }}">
+                                    {{ 'Active' if post.active else 'Inactive' }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex gap-2">
+                                    <a href="{{ url_for('routes.toggle_post', post_id=post_id) }}" 
+                                       class="px-3 py-1 text-sm {{ 'bg-red-500 hover:bg-red-600' if post.active else 'bg-green-500 hover:bg-green-600' }} text-white rounded">
+                                        {{ 'Deactivate' if post.active else 'Activate' }}
+                                    </a>
+                                    <a href="{{ url_for('routes.remove_post', post_id=post_id) }}" 
+                                       class="px-3 py-1 text-sm bg-red-500 hover:bg-red-600 text-white rounded">
+                                        Remove
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-gray-500">No posts added yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

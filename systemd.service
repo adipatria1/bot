@@ -1,0 +1,15 @@
+[Unit]
+Description=Instagram Bot Manager
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/var/www/instagram-bot
+Environment="PATH=/var/www/instagram-bot/venv/bin"
+Environment="FLASK_ENV=production"
+Environment="SECRET_KEY=your-production-secret-key"
+ExecStart=/var/www/instagram-bot/venv/bin/gunicorn -c gunicorn_config.py wsgi:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
