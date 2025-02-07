@@ -6,6 +6,7 @@ from instagrapi import Client
 from datetime import datetime
 from .user_manager import user_manager
 from .multi_post_manager import MultiPostManager
+from .logger import setup_logger
 
 class InstagramClient:
     def __init__(self):
@@ -19,6 +20,7 @@ class InstagramClient:
         self.bot_thread = None
         self.bot_running = False
         self.current_username = None
+        self.logger = setup_logger()
 
     def ensure_login(self):
         try:
@@ -29,40 +31,45 @@ class InstagramClient:
             if not self.client.user_id or (self.last_login and time.time() - self.last_login > 3600):
                 if self.login_attempts >= self.max_login_attempts:
                     if time.time() - self.last_login < self.login_cooldown:
+                        self.logger.error("Too many login attempts. Please wait before trying again.")
                         raise Exception("Too many login attempts. Please wait before trying again.")
                     self.login_attempts = 0
 
                 username = self.current_username
                 if not username:
+                    self.logger.error("No username set")
                     raise Exception("No username set")
                     
                 password = os.getenv(f'INSTA_PASSWORD_{username}')
                 if not password:
+                    self.logger.error("Password not found for user")
                     raise Exception("Password not found for user")
 
                 self.client.login(username=username, password=password)
                 self.last_login = time.time()
                 self.login_attempts = 0
-                print(f"Successfully logged in as {username}")
+                self.logger.info(f"Successfully logged in as {username}")
                 return True
 
             try:
                 self.client.user_info(self.client.user_id)
                 return True
-            except Exception:
+            except Exception as e:
+                self.logger.error(f"Session check failed: {e}")
                 self.client = None
                 return self.ensure_login()
 
         except Exception as e:
-            print(f"Login error: {e}")
+            self.logger.error(f"Login error: {e}")
             self.login_attempts += 1
             self.client = None
             raise
 
     def set_current_user(self, username):
         self.current_username = username
-        self.client = None  # Force re-login with new user
+        self.client = None
         self.last_login = None
+        self.logger.info(f"Current user set to: {username}")
 
     def send_dm(self, user_id, message):
         current_time = time.time()
@@ -72,16 +79,18 @@ class InstagramClient:
         
         try:
             if not self.ensure_login():
+                self.logger.error("Not logged in")
                 raise Exception("Not logged in")
                 
             time.sleep(random.uniform(2, 4))
             result = self.client.direct_send(message, [user_id])
             self.last_dm_time = time.time()
+            self.logger.info(f"DM sent to user {user_id}")
             return result
         except Exception as e:
-            print(f"DM error: {e}")
+            self.logger.error(f"DM error: {e}")
             if "feedback_required" in str(e):
-                print("DM rate limit hit, increasing cooldown")
+                self.logger.warning("DM rate limit hit, increasing cooldown")
                 self.dm_cooldown = min(self.dm_cooldown * 2, 300)
             raise
 
@@ -91,12 +100,14 @@ class InstagramClient:
             self.bot_thread = threading.Thread(target=self.run_bot)
             self.bot_thread.daemon = True
             self.bot_thread.start()
+            self.logger.info("Bot started")
 
     def stop_bot(self):
         self.bot_running = False
         if self.bot_thread:
             self.bot_thread.join()
             self.bot_thread = None
+            self.logger.info("Bot stopped")
 
     def run_bot(self):
         processed_comments = set()
@@ -105,6 +116,7 @@ class InstagramClient:
         while self.bot_running:
             try:
                 if not self.ensure_login():
+                    self.logger.warning("Login failed, waiting 60 seconds")
                     time.sleep(60)
                     continue
 
@@ -115,11 +127,12 @@ class InstagramClient:
                         dm_queue.pop(0)
                         time.sleep(random.uniform(30, 45))
                     except Exception as e:
-                        print(f"Failed to send DM: {e}")
+                        self.logger.error(f"Failed to send DM: {e}")
                         time.sleep(60)
                     continue
 
                 if not self.current_username:
+                    self.logger.warning("No username set, waiting 60 seconds")
                     time.sleep(60)
                     continue
 
@@ -153,6 +166,7 @@ class InstagramClient:
                                     
                                     self.client.media_comment(media_id, reply_text, replied_to_comment_id=comment.pk)
                                     self.client.comment_like(comment.pk)
+                                    self.logger.info(f"Replied to comment by {username_to_reply} on post {post_id}")
                                     
                                     if send_dm:
                                         commenter_info = self.client.user_info(comment.user.pk)
@@ -166,19 +180,20 @@ class InstagramClient:
                                             'user_id': comment.user.pk,
                                             'message': dm_text
                                         })
+                                        self.logger.info(f"Added DM to queue for user {comment.user.pk}")
                                         
                                     post_data['last_check'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     post_manager.save_posts()
                                     
                     except Exception as e:
-                        print(f"Error processing post {post_id}: {e}")
+                        self.logger.error(f"Error processing post {post_id}: {e}")
                         if "login_required" in str(e):
                             self.client = None
                         
                 time.sleep(random.uniform(20, 40))
                 
             except Exception as e:
-                print(f"Bot error: {e}")
+                self.logger.error(f"Bot error: {e}")
                 time.sleep(60)
                 
-        print("Bot stopped")
+        self.logger.info("Bot stopped")
