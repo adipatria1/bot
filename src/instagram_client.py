@@ -7,6 +7,7 @@ from datetime import datetime
 from .user_manager import user_manager
 from .multi_post_manager import MultiPostManager
 from .logger import setup_logger
+from .heartbeat import HeartbeatMonitor
 
 class InstagramClient:
     def __init__(self):
@@ -21,6 +22,9 @@ class InstagramClient:
         self.bot_running = False
         self.current_username = None
         self.logger = setup_logger()
+        self.heartbeat = HeartbeatMonitor()
+        self.last_activity_check = 0
+        self.activity_check_interval = 300  # 5 minutes
 
     def ensure_login(self):
         try:
@@ -109,12 +113,22 @@ class InstagramClient:
             self.bot_thread = None
             self.logger.info("Bot stopped")
 
+    def check_activity(self):
+        current_time = time.time()
+        if current_time - self.last_activity_check >= self.activity_check_interval:
+            self.logger.info(f"Bot activity check - Status: Running, Username: {self.current_username}")
+            self.heartbeat.update(self.current_username)
+            self.last_activity_check = current_time
+
     def run_bot(self):
         processed_comments = set()
         dm_queue = []
+        self.logger.info(f"Bot main loop started for user: {self.current_username}")
         
         while self.bot_running:
             try:
+                self.check_activity()
+                
                 if not self.ensure_login():
                     self.logger.warning("Login failed, waiting 60 seconds")
                     time.sleep(60)
@@ -138,6 +152,13 @@ class InstagramClient:
 
                 post_manager = MultiPostManager(self.current_username)
                 posts = post_manager.get_posts()
+                
+                if not posts:
+                    self.logger.info("No posts found to monitor")
+                    time.sleep(60)
+                    continue
+                
+                self.logger.debug(f"Checking {len(posts)} posts for new comments")
                 
                 for post_id, post_data in posts.items():
                     if not post_data['active']:
