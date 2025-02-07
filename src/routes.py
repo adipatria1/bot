@@ -5,9 +5,11 @@ from .config import update_env_file
 from .user_manager import user_manager
 from .multi_post_manager import MultiPostManager
 from .instagram_client import InstagramClient
+from .logger import setup_logger
 
 bp = Blueprint('routes', __name__)
 instagram_client = InstagramClient()
+logger = setup_logger()
 
 def login_required(f):
     @wraps(f)
@@ -33,26 +35,30 @@ def login():
             session['logged_in'] = True
             session['username'] = username
             
-            # Add user to user manager if not exists
             if not user_manager.user_exists(username):
                 user_manager.add_user(username)
+                logger.info(f"New user added: {username}")
                 
             update_env_file(f'INSTA_USERNAME_{username}', username)
             update_env_file(f'INSTA_PASSWORD_{username}', password)
             
             instagram_client.set_current_user(username)
             instagram_client.start_bot()
+            logger.info(f"User {username} logged in successfully")
             return redirect(url_for('routes.index'))
         except Exception as e:
+            logger.error(f"Login failed for user {username}: {e}")
             flash(str(e), 'error')
     
     return render_template('login.html')
 
 @bp.route('/logout')
 def logout():
+    username = session.get('username')
     instagram_client.stop_bot()
     session.pop('logged_in', None)
     session.pop('username', None)
+    logger.info(f"User {username} logged out")
     return redirect(url_for('routes.login'))
 
 @bp.route('/')
@@ -68,16 +74,19 @@ def add_post():
     username = session.get('username')
     post_manager = MultiPostManager(username)
     try:
+        url = request.form.get('url')
         post_manager.add_post(
-            url=request.form.get('url'),
+            url=url,
             keyword=request.form.get('keyword', 'gelud'),
             reply_comment_text=request.form.get('reply_comment_text', "Thank you for commenting '{keyword}', @{username}!"),
             reply_dm_text=request.form.get('reply_dm_text', "Hi {display_name}! Thanks for commenting '{keyword}'. Can I help you with anything?"),
             send_dm_if_following=request.form.get('send_dm_if_following') == 'on',
             send_dm_if_keyword=request.form.get('send_dm_if_keyword') == 'on'
         )
+        logger.info(f"New post added by {username}: {url}")
         flash('Post added successfully!', 'success')
     except ValueError as e:
+        logger.error(f"Failed to add post for user {username}: {e}")
         flash(str(e), 'error')
     return redirect(url_for('routes.index'))
 
@@ -87,6 +96,7 @@ def remove_post(post_id):
     username = session.get('username')
     post_manager = MultiPostManager(username)
     post_manager.remove_post(post_id)
+    logger.info(f"Post {post_id} removed by user {username}")
     flash('Post removed successfully!', 'success')
     return redirect(url_for('routes.index'))
 
@@ -96,4 +106,5 @@ def toggle_post(post_id):
     username = session.get('username')
     post_manager = MultiPostManager(username)
     post_manager.toggle_post(post_id)
+    logger.info(f"Post {post_id} toggled by user {username}")
     return redirect(url_for('routes.index'))
